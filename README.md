@@ -77,6 +77,14 @@ If you use this code for your research, please cite our paper:
 
 ```
 
+
+### Repo awarded a GRETSI 2025 reproductibility award [Label Reproductible du GRESTI'25](https://gretsi.fr/colloque2025/recherche-reproductible/)
+
+| Label décerné | Auteur | Rapporteur | Éléments reproduits | Liens |
+|:-------------:|:------:|:----------:|:-------------------:|:------|
+| ![](images/label_argent.png) | Pierrick CHATILLON<br>[@PierrickCh](https://github.com/PierrickCh) | Louise FRIOT GIROUX[@Louisefg](https://github.com/Louisefg) |  Figure 1<br>Figure 3 | 📌&nbsp;[Dépôt&nbsp;original](https://github.com/PierrickCh/SIMuLDiTex)<br>⚙️&nbsp;[Issue](https://github.com/GRETSI-2025/Label-Reproductible/issues/9)<br>📝&nbsp;[Rapport](https://github.com/akrah/test/tree/main/rapports/Rapport_issue_09) |
+
+
 ### License
 This work is under the MIT license.
 
