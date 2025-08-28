@@ -78,7 +78,7 @@ If you use this code for your research, please cite our paper:
 ```
 
 
-### Repo awarded a GRETSI 2025 reproductibility award [Label Reproductible du GRESTI'25](https://gretsi.fr/colloque2025/recherche-reproductible/)
+### Repo awarded the GRETSI 2025 reproductibility silver label [Label Reproductible du GRESTI'25](https://gretsi.fr/colloque2025/recherche-reproductible/)
 
 | Label décerné | Auteur | Rapporteur | Éléments reproduits | Liens |
 |:-------------:|:------:|:----------:|:-------------------:|:------|
