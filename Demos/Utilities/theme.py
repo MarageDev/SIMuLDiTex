@@ -142,6 +142,16 @@ footer {visibility: hidden}
 }
 
 
+.output-image-fill img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    padding: 15px;
+}
+.output-image-fill > div {
+    width: 100% !important;
+    height: 100% !important;
+}
 
 
 .tabitem{
@@ -189,7 +199,9 @@ footer {visibility: hidden}
 	width: 100% !important;
 	height: 100% !important;
 }
-
+.fixed_height_image_row{
+    height : 350px !important;
+}
 .output_column {
 height: -webkit-fill-available;
 }

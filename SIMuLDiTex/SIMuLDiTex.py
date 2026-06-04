@@ -1744,7 +1744,7 @@ class GaussianDiffusion(Module):
                     c * pred_noise + \
                     sigma * noise
                 
-                
+                yield img
 
         times = torch.linspace(-1, int(total_timesteps*(time_ratio)) - 1, steps = sampling_timesteps + 1)   # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
         times = list(reversed(times.int().tolist()))
@@ -1769,7 +1769,8 @@ class GaussianDiffusion(Module):
             c = (1 - alpha - sigma ** 2).sqrt()
             img = img.cpu() * alpha.sqrt() + \
                     c * noise
-
+            
+            yield img
             
             patches,paths=patch_recursive(img,max_area=patch_size**2,overlap=32)
             if len(patches)>1:
@@ -1810,6 +1811,8 @@ class GaussianDiffusion(Module):
                                 c * pred_noise + \
                                 sigma * noise
                             
+                            yield img
+                            
                     img=img[...,(H-h)//2:h+(H-h)//2,(W-w)//2:w+(W-w)//2]
                     patches[i]=img.detach().cpu()
 
@@ -1821,7 +1824,7 @@ class GaussianDiffusion(Module):
                     img=img.cpu()
                 
                 #img=depatchify(p_hr,out_shape=shape,patch_size=patch_size,overlap=overlap_curr,border=border_hr_curr)
-
+                yield img
             else: # don't patchify
                 img=img.to(device)
                 for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
@@ -1848,7 +1851,7 @@ class GaussianDiffusion(Module):
                             sigma * noise
                         #img=img+SW2_hist_grad(img,resize(gt.to(img.device),scale_factors=1/scale_factor))
 
-    
+                        yield img
 
             
 
@@ -1859,6 +1862,7 @@ class GaussianDiffusion(Module):
         ret = img if not return_all_timesteps else torch.stack(imgs, dim = 1)
 
         ret = self.unnormalize(ret)
+        yield ret
         return ret
 
     @torch.inference_mode()

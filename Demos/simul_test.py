@@ -45,18 +45,11 @@ def get_latest_model_index(directory):
 os.makedirs('./images/results/gif_frames',exist_ok=True)
 clear_output()
 
-name1,name2 = 'wall','rust'                 # 2 textures for background anbd font: 'wall' 'carpet' 'rust' 'crepe' 'ananaskin' 'ananaskin2','gold'
+name1,name2 = 'wall','rust'                 # 2 textures for background and font: 'wall' 'carpet' 'rust' 'crepe' 'ananaskin' 'ananaskin2','gold'
 nc = 16                                     # 16, 32    for 1M or 4M parameters
-S = 2                                       # Sampling steps
+S = 8                                       # Sampling steps
 r = .8                                      # renoising time ratio
 patch_size=3000                             # Maximum side of patches used if inference triggers memory error, to lower in case this happens.
-char_size = 1024                            # character size
-string='your_text'                          # use '_' to break line, all lines must have the same number of caracters, you can use blanks ' '
-dilation = 2                                # iterations of morphological dilation on caracters mask
-
-size=( (string.count('_')+1) * char_size , string.find('_')*char_size if string.find('_')!=-1 else len(string)*char_size)
-
-
 
 
 folder='runs/%s_lr1e-4_bs32_T200_100000_dim%d_octaves_3/'%(name1,nc)
@@ -96,58 +89,26 @@ trainer2.load(get_latest_model_index(folder))
 
 diffusion1.model2=model2
 
+def load_image_tensor(path:str, device:str='cuda', size:tuple=None, scaling_factor:int=None):
+    img = Image.open(path).convert('RGB')
+    numpy_img = np.array(img)
+    h, w, c = numpy_img.shape
+    if size is not None:
+        img = img.resize(size, Image.BICUBIC)
+    if scaling_factor is not None:
+        img = img.resize((w*scaling_factor,h*scaling_factor), Image.BICUBIC)
+    x = transforms.ToTensor()(img).unsqueeze(0).to(device)
+    return x
 
+omega = load_image_tensor('./Demos/results/test_mask.jpg', device='cuda',scaling_factor=4)
+_, c, h, w = omega.shape
+size = (h, w)
+print(size)
+im = diffusion1.spatial_interp(size=size, time_ratio=r, omega=omega, patch_size=patch_size)
 
-# create mask 
-width=21
-sigma=5
-kernel_size = [width,width] 
-kernel = 1
-mgrids = torch.meshgrid([torch.arange(size, dtype=torch.float32) for size in kernel_size])
-kernel=(mgrids[0]-(kernel_size[0] - 1) / 2)**2+(mgrids[1]-(kernel_size[1] - 1) / 2)**2
-kernel=torch.exp(-kernel/sigma**2)
-kernel = kernel / torch.sum(kernel)
-kernel = kernel.view(1, 1, *kernel.size())
-conv = torch.nn.Conv2d(1,1, kernel_size, groups=1, bias=False, stride=1, padding=int((kernel_size[0] - 1) / 2), padding_mode='replicate')
-conv.weight.data = kernel
-conv.weight.requires_grad = False
-conv.cuda()
-kernel = np.ones((3,3),np.uint8)
-mask=None
-mask_list=[]
-for i,s in enumerate(string.upper()):
-
-    if s=='_':
-        if mask is None:
-            mask=torch.cat(mask_list,dim=-1)
-        else:
-            mask=torch.cat((mask,torch.cat(mask_list,dim=-1)),dim=-2)
-        mask_list=[]
-
-    elif s==' ':
-        mask_letter=0.*transforms.ToTensor()(cv2.dilate(np.array(Image.open('./images/letters/1.png')),kernel,iterations = dilation)).unsqueeze(0)
-        mask_list.append(mask_letter)
-    else:
-        mask_letter=transforms.ToTensor()(cv2.dilate(np.array(Image.open('./images/letters/%s.png'%s)),kernel,iterations = dilation)).unsqueeze(0)
-        mask_list.append(mask_letter)
-if mask is None:
-    mask=torch.cat(mask_list,dim=-1)
-else:
-    try:
-        mask=torch.cat((mask,torch.cat(mask_list,dim=-1)),dim=-2)
-    except:
-        pass
-
-
-omega=mask.cuda()
-omega=conv(omega).cpu()
-save_image(omega[0],'./images/results/%s_mask.jpg'%string)
-
-im=diffusion1.spatial_interp(size=size,time_ratio=r,omega=omega,patch_size=patch_size)
-clear_output()
-plt.figure(figsize=(15,15))
-plt.imshow(im[0].permute(1,2,0).cpu())
+plt.figure(figsize=(15, 15))
+plt.imshow(im[0].permute(1, 2, 0).cpu())
+plt.axis('off')
 plt.show()
-save_image(im, './images/results/%s_%s_%s_32.jpg'%(string,name1,name2))
 
         

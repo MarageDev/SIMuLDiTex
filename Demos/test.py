@@ -45,10 +45,27 @@ import SIMuLDiTex.interp_methods as interp
 from IPython.display import clear_output
 import time, json, re
 
+# Global variables
 
+name1,name2 = 'gold','wall' # 2 textures for background anbd font: 'wall' 'carpet' 'rust' 'crepe' 'ananaskin' 'ananaskin2','gold'
+nc = 16 # 16, 32    for 1M or 4M parameters
+S = 2 # Sampling steps
+r = .8 # renoising time ratio
+patch_size=3000 # Maximum side of patches used if inference triggers memory error, to lower in case this happens.
+char_size = 1024 # character size
+octaves = 3
 
 # Functions
-
+def load_image_tensor(path:str, device:str='cuda', size:tuple=None, scaling_factor:int=None):
+    img = Image.open(path).convert('RGB')
+    numpy_img = np.array(img)
+    h, w, c = numpy_img.shape
+    if size is not None:
+        img = img.resize(size, Image.BICUBIC)
+    if scaling_factor is not None:
+        img = img.resize((w*scaling_factor,h*scaling_factor), Image.BICUBIC)
+    x = transforms.ToTensor()(img).unsqueeze(0).to(device)
+    return x
 ## SIMuLDiTex Functions
 
 def n_params(model):
@@ -73,13 +90,11 @@ def get_latest_model_index(directory):
     else:
         return None
 
-def run_simulditex(tex1,tex2):
+def run_simulditex():
     """
     tex1 : background texture
     tex2 : the masking texture
     """
-    
-    
     
     # Texture 1
     folder='runs/%s_lr1e-4_bs32_T200_100000_dim%d_octaves_3/'%(name1,nc)
@@ -121,7 +136,20 @@ def run_simulditex(tex1,tex2):
 
     diffusion1.model2=model2
     
-
+    omega = load_image_tensor('./Demos/results/test_mask.jpg', device='cuda',scaling_factor=4)
+    _, c, h, w = omega.shape
+    size = (h, w)
+    #im = diffusion1.spatial_interp(size=size, time_ratio=r, omega=omega, patch_size=patch_size)
+    
+    
+    
+    for im in diffusion1.spatial_interp(size=size, time_ratio=r, omega=omega, patch_size=patch_size, octaves=octaves):
+        
+        # To go from torch.Tensor to a numpy image : 
+        img = im[0].permute(1, 2, 0).cpu().numpy()
+        img = (img * 255).clip(0, 255).astype(np.uint8) # Convert range to [0, 255] and uint8 for Gradio
+        
+        yield img
 ## UI Functions
 
 def predict(im:np.ndarray):
@@ -155,25 +183,15 @@ def update_parameter_number(x):
         case "4M":
             nc = 32
 
-def update_simulditex_params(i_s,i_r,i_patch_size):
-    global s,r,patch_size
+def update_simulditex_params(i_s,i_r,i_patch_size, i_octaves):
+    global S,r,patch_size, octaves
     
-    s = i_s
+    S = i_s
     r = i_r 
-    patch_size = i_patch_size        
+    patch_size = i_patch_size   
+    octaves = i_octaves
     
 # Interface
-# Global variables
-
-name1,name2 = 'wall','rust' # 2 textures for background anbd font: 'wall' 'carpet' 'rust' 'crepe' 'ananaskin' 'ananaskin2','gold'
-nc = 16 # 16, 32    for 1M or 4M parameters
-S = 2 # Sampling steps
-r = .8 # renoising time ratio
-patch_size=3000 # Maximum side of patches used if inference triggers memory error, to lower in case this happens.
-char_size = 1024 # character size
-string='your_text' # use '_' to break line, all lines must have the same number of caracters, you can use blanks ' '
-dilation = 2 # iterations of morphological dilation on caracters mask
-
 
 with gr.Blocks() as demo:
     gr.HTML(HTML_LOGO_HEADER)
@@ -185,28 +203,51 @@ with gr.Blocks() as demo:
             value="1M",
             elem_classes="radio_group",
         )
-    with gr.Row(equal_height=True,variant="panel"):
+    with gr.Row(equal_height=True,variant="panel", elem_classes="fixed_height_image_row"):
         im = gr.ImageEditor(
             type="numpy",
-            label="Input"
+            label="Input",
+            sources=(),
+            elem_classes="full_height"
         )
         im_preview = gr.Image(
             type="numpy",
-            label="Output"
+            label="Output",
+            elem_classes="output-image-fill"
         )
+
     with gr.Row(equal_height=True,):
         with gr.Column(scale=1):
+            with gr.Row():
+                in_width = gr.Slider(
+                    label="Width (px)",
+                    info="Width of the image",
+                    value=2**11,
+                    minimum=2**6,
+                    maximum=2**12,
+                    step=1
+                )
+
+                in_height = gr.Slider(
+                    label="Height (px)",
+                    info="Width of the image",
+                    value=2**11,
+                    minimum=2**6,
+                    maximum=2**12,
+                    step=1
+                )
+
             in_drop_tex_1 = gr.Dropdown(
                 choices=['wall','carpet','rust','crepe','ananaskin','ananaskin2','gold'],
                 label="Texture 1",
                 info="Background texture displayed behind the masking texture (Texture 2)",
-                value="wall",
+                value=name1,
                 )
             in_drop_tex_2 = gr.Dropdown(
                 choices=['wall','carpet','rust','crepe','ananaskin','ananaskin2','gold'],
                 label="Texture 2",
                 info="Texture displayed above the background texture (Texture 1). The mask input will use this texture.",
-                value="rust",
+                value=name2,
                 )
         with gr.Column(scale=2):
             in_S = gr.Slider(
@@ -233,11 +274,11 @@ with gr.Blocks() as demo:
                 maximum=10000,
                 step=1
             )
-            in_dilation = gr.Slider(
-                label="Mask Dilation",
-                info="Iterations of morphological dilation on the masking texture (painted texture 2 )",
-                value=0,
-                minimum=0,
+            in_octaves = gr.Slider(
+                label="Octaves",
+                info="",
+                value=3,
+                minimum=1,
                 maximum=10,
                 step=1
             )
@@ -265,21 +306,21 @@ with gr.Blocks() as demo:
     ## Bind general simulditex parameters
     in_S.change(
         fn=update_simulditex_params,
-        inputs=[in_S, in_r, in_patch_size],
+        inputs=[in_S, in_r, in_patch_size, in_octaves],
         outputs=[]
     )
     in_r.change(
         fn=update_simulditex_params,
-        inputs=[in_S, in_r, in_patch_size],
+        inputs=[in_S, in_r, in_patch_size, in_octaves],
         outputs=[]
     )
     in_patch_size.change(
         fn=update_simulditex_params,
-        inputs=[in_S, in_r, in_patch_size],
+        inputs=[in_S, in_r, in_patch_size, in_octaves],
         outputs=[]
     )
     
-    visualize = gr.Button(value="Print to debug", variant="primary")
+    btn_generate = gr.Button(value="Generate", variant="primary")
     apply_filter = gr.Button(value="filter")
     
     apply_filter.click(
@@ -287,7 +328,11 @@ with gr.Blocks() as demo:
         inputs=im,
         outputs=im_preview
     )
-    visualize.click(visu,im)
+    btn_generate.click(
+        fn=run_simulditex,
+        inputs=[],
+        outputs=[im_preview]
+    )
     im.change(predict, outputs=im_preview, inputs=im)
     gr.HTML(HTML_FOOTER)
 
