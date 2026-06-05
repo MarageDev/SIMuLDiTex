@@ -1,12 +1,4 @@
 """
-Notes
-Paramètres à exposer sur l'interface :
-    - number of diffusion steps T
-    - noise ratio r
-    - number of sampling steps S
-    - patch size
-    - scale factors F = {f1, . . . fK}
-    
 Démos à faire : 
     - Writing text with two textures as font and background (use gradio https://www.gradio.app/docs/gradio/imageeditor to be able to paint over it instead of typing text)
     Maybe add possibility to upload a custom b&w image as a mask too (easier for quick demos)
@@ -21,6 +13,7 @@ Démos à faire :
 import sys
 import os
 from pathlib import Path
+from tqdm import tqdm
 
 # Add parent directory to path for imports and file pathsto work from the Demos folder more easily
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,6 +39,7 @@ from IPython.display import clear_output
 import time, json, re
 
 # Global variables
+width, height = 2048, 1024
 
 name1,name2 = 'gold','wall' # 2 textures for background anbd font: 'wall' 'carpet' 'rust' 'crepe' 'ananaskin' 'ananaskin2','gold'
 nc = 16 # 16, 32    for 1M or 4M parameters
@@ -53,12 +47,23 @@ S = 2 # Sampling steps
 r = .8 # renoising time ratio
 patch_size=3000 # Maximum side of patches used if inference triggers memory error, to lower in case this happens.
 char_size = 1024 # character size
-octaves = 3
+octaves = 2
 
 # Functions
 def load_image_tensor(path:str, device:str='cuda', size:tuple=None, scaling_factor:int=None):
     img = Image.open(path).convert('RGB')
     numpy_img = np.array(img)
+    h, w, c = numpy_img.shape
+    if size is not None:
+        img = img.resize(size, Image.BICUBIC)
+    if scaling_factor is not None:
+        img = img.resize((w*scaling_factor,h*scaling_factor), Image.BICUBIC)
+    x = transforms.ToTensor()(img).unsqueeze(0).to(device)
+    return x
+
+def load_array_tensor(array:np.array, device:str='cuda', size:tuple=None, scaling_factor:int=None):
+    img = Image.fromarray(array).convert('RGB')
+    numpy_img = np.array(array)
     h, w, c = numpy_img.shape
     if size is not None:
         img = img.resize(size, Image.BICUBIC)
@@ -90,12 +95,10 @@ def get_latest_model_index(directory):
     else:
         return None
 
-def run_simulditex():
-    """
-    tex1 : background texture
-    tex2 : the masking texture
-    """
-    
+
+diffusion:GaussianDiffusion = None
+def load_models():
+    global diffusion
     # Texture 1
     folder='runs/%s_lr1e-4_bs32_T200_100000_dim%d_octaves_3/'%(name1,nc)
 
@@ -136,36 +139,36 @@ def run_simulditex():
 
     diffusion1.model2=model2
     
-    omega = load_image_tensor('./Demos/results/test_mask.jpg', device='cuda',scaling_factor=4)
+    diffusion = diffusion1
+    
+is_running:bool = False
+def run_simulditex():
+    torch.cuda.empty_cache()
+    """
+    tex1 : background texture
+    tex2 : the masking texture
+    """
+    global is_running
+    is_running = True
+    
+    #omega = load_image_tensor('./Demos/results/test_mask.jpg', device='cuda',scaling_factor=4)
+    print("STARTING GENERATION")
+    omega = load_array_tensor(np.abs(255 - canvas_tex), device='cuda')
+    save_image(omega[0],'./Demos/results/test_mask.jpg')
     _, c, h, w = omega.shape
-    size = (h, w)
-    #im = diffusion1.spatial_interp(size=size, time_ratio=r, omega=omega, patch_size=patch_size)
+    size = (height, width)
+
     
-    
-    
-    for im in diffusion1.spatial_interp(size=size, time_ratio=r, omega=omega, patch_size=patch_size, octaves=octaves):
+    for im in diffusion.spatial_interp(size=size, time_ratio=r, omega=omega, patch_size=patch_size, octaves=octaves):
         
         # To go from torch.Tensor to a numpy image : 
         img = im[0].permute(1, 2, 0).cpu().numpy()
         img = (img * 255).clip(0, 255).astype(np.uint8) # Convert range to [0, 255] and uint8 for Gradio
         
-        yield img
-## UI Functions
-
-def predict(im:np.ndarray):
-    return im["composite"]
-
-def visu(x):
-    comp:np.ndarray = x["composite"]
-    print(comp.shape)
-    print(comp.flatten())
-    print(comp.flatten().reshape(comp.shape))
-    
-def filter(im):
-    comp:np.ndarray = im["composite"].astype(np.float64)
-    dim = comp.shape    
-    #return comp.astype(np.uint8)#.reshape(dim)
-    return comp[:,:,2:4].astype(np.uint8)
+        if is_running == False : return img
+        
+        yield img   
+    is_running = False
 
 ## Globals update
 
@@ -173,6 +176,8 @@ def update_textures(tex1,tex2):
     global name1, name2
     name1 = tex1
     name2 = tex2
+    
+    load_models()
 
 def update_parameter_number(x):
     global nc
@@ -182,7 +187,7 @@ def update_parameter_number(x):
             nc = 16
         case "4M":
             nc = 32
-
+    load_models()
 def update_simulditex_params(i_s,i_r,i_patch_size, i_octaves):
     global S,r,patch_size, octaves
     
@@ -190,8 +195,25 @@ def update_simulditex_params(i_s,i_r,i_patch_size, i_octaves):
     r = i_r 
     patch_size = i_patch_size   
     octaves = i_octaves
+def update_dimensions(i_w,i_h):
+    global width, height
+    width = i_w
+    height = i_h
     
+    return gr.update("image_canvas",canvas_size=(width,height))
+
+canvas_tex = np.full((height, width), 255, dtype=np.uint8)
+
+def update_global_canvas_tex(im):
+    global canvas_tex
+    canvas_tex = im['composite']
+      
+def stop_running():
+    global is_running
+    is_running = False
 # Interface
+
+load_models() # pre-load the models to gain in speed during the real-time drawing (otherwise there's a delay of ~5s)
 
 with gr.Blocks() as demo:
     gr.HTML(HTML_LOGO_HEADER)
@@ -203,38 +225,56 @@ with gr.Blocks() as demo:
             value="1M",
             elem_classes="radio_group",
         )
-    with gr.Row(equal_height=True,variant="panel", elem_classes="fixed_height_image_row"):
+    with gr.Row(equal_height=True,variant="panel", elem_classes="fixed_height_image_row flex_display"):
+        im_layers = gr.LayerOptions(
+            layers=["Mask"],
+            allow_additional_layers=False 
+        )
+        im_brushes = gr.Brush(
+            default_size="auto",
+            colors=["rgb(0, 0, 0)"],
+            
+        )
         im = gr.ImageEditor(
             type="numpy",
             label="Input",
             sources=(),
-            elem_classes="full_height"
+            elem_classes="full_height",
+            elem_id="image_canvas",
+            canvas_size=(width,height),
+            brush=im_brushes
         )
+        
+        
+        
+        
         im_preview = gr.Image(
             type="numpy",
             label="Output",
-            elem_classes="output-image-fill"
+            elem_classes="output-image-fill",
+            
         )
-
+    with gr.Row():
+        reload_btn = gr.Button(value="Force Stop")
     with gr.Row(equal_height=True,):
         with gr.Column(scale=1):
             with gr.Row():
                 in_width = gr.Slider(
                     label="Width (px)",
                     info="Width of the image",
-                    value=2**11,
+                    value=width,
                     minimum=2**6,
                     maximum=2**12,
-                    step=1
+                    step=2**6
                 )
 
                 in_height = gr.Slider(
                     label="Height (px)",
                     info="Width of the image",
-                    value=2**11,
+                    value=height,
                     minimum=2**6,
                     maximum=2**12,
-                    step=1
+                    step=2**6
                 )
 
             in_drop_tex_1 = gr.Dropdown(
@@ -284,17 +324,33 @@ with gr.Blocks() as demo:
             )
     
     # Bind events
+    ## Bind canvas edit (need to find if possible to cancel on change)
+    update_preview = im.change(
+        fn=stop_running,
+    ).then(
+        fn=update_global_canvas_tex,
+        inputs=im,
+    ).then(
+        fn=run_simulditex,
+        inputs=[],
+        outputs=[im_preview],
+    )
+    
+    reload_btn.click(
+        fn = stop_running,
+        cancels=update_preview
+    )
     ## Bind texture change
     in_drop_tex_1.change(
         fn=update_textures,
         inputs=[in_drop_tex_1, in_drop_tex_2],
         outputs=[]
-    )
+    ).then(load_models)
     in_drop_tex_2.change(
         fn=update_textures,
         inputs=[in_drop_tex_1, in_drop_tex_2],
         outputs=[]
-    )
+    ).then(load_models)
     
     ## Bind paramater count
     in_radio_nc.change(
@@ -319,22 +375,31 @@ with gr.Blocks() as demo:
         inputs=[in_S, in_r, in_patch_size, in_octaves],
         outputs=[]
     )
+    in_octaves.change(
+        fn=update_simulditex_params,
+        inputs=[in_S, in_r, in_patch_size, in_octaves],
+        outputs=[]
+    )
+    ## Bind texture dimension
+    in_width.change(
+        fn=update_dimensions,
+        inputs=[in_width,in_height],
+        outputs=im
+    )
+    in_height.change(
+        fn=update_dimensions,
+        inputs=[in_width,in_height],
+        outputs=im
+    )
     
     btn_generate = gr.Button(value="Generate", variant="primary")
-    apply_filter = gr.Button(value="filter")
-    
-    apply_filter.click(
-        fn=filter,
-        inputs=im,
-        outputs=im_preview
-    )
+
     btn_generate.click(
         fn=run_simulditex,
         inputs=[],
         outputs=[im_preview]
     )
-    im.change(predict, outputs=im_preview, inputs=im)
     gr.HTML(HTML_FOOTER)
 
 
-demo.launch(css=CUSTOM_CSS,head=HTML_CUSTOM_HEAD)
+demo.queue().launch(css=CUSTOM_CSS,head=HTML_CUSTOM_HEAD)

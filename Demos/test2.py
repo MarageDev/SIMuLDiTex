@@ -1,24 +1,21 @@
-import torch
-import torch.nn as nn
-import matplotlib.pyplot as plt
+import gradio as gr
+import numpy as np
 
-# 1 image, 3 channels, 20x20
-x = torch.randn(1, 3, 20, 20)
+with gr.Blocks() as demo:
+    W = gr.Slider(label="W", minimum=50, maximum=1000, value=100)
+    H = gr.Slider(label="H", minimum=50, maximum=1000, value=500)
 
-# Keep stride 2; use padding=1 if you want a more comparable size
-m = nn.Conv2d(3, 3, 2, stride=2, padding=1)
+    # initial canvas matching slider defaults
+    width0 = 100
+    height0 = 500
 
-y = m(x)
+    @gr.render(inputs=[W, H])
+    def render_canvas(w, h):
+        canvas = {
+            "background": None,
+            "layers": [np.full((h, w), 255, dtype=np.uint8)],
+            "composite": None,
+        }
+        gr.ImageEditor(type="numpy", label="Canvas", canvas_size=(w, h), value=canvas, interactive=True)
 
-fig, axes = plt.subplots(1, 2, figsize=(8, 4))
-
-axes[0].imshow(x[0].permute(1, 2, 0).detach().numpy())
-axes[0].set_title("Original x")
-axes[0].axis("off")
-
-axes[1].imshow(y[0, 0].detach().numpy())
-axes[1].set_title("Convolution output")
-axes[1].axis("off")
-
-plt.tight_layout()
-plt.show()
+    demo.launch()

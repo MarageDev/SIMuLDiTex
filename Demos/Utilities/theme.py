@@ -153,7 +153,10 @@ footer {visibility: hidden}
     height: 100% !important;
 }
 
-
+.flex_display{
+    display: flex;
+    flex-wrap: nowrap;
+}
 .tabitem{
 	display:flex;
 	flex:auto;
