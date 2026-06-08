@@ -2051,10 +2051,11 @@ class GaussianDiffusion(Module):
                                 c * pred_noise + \
                                 sigma * noise
                             
+                            yield img
                     
 
                         img=depatch(patches,paths,overlap=32).to(device)
-
+                        yield img
 
                         img = img.clone().detach().requires_grad_(True)
                         lr=resize(img,out_shape=(crop_in.shape[-2],crop_in.shape[-1]),interp_method=interp.linear)
@@ -2068,7 +2069,7 @@ class GaussianDiffusion(Module):
 
                     img=img[...,(H-h)//2:h+(H-h)//2,(W-w)//2:w+(W-w)//2]
                     patches[i]=img.detach().cpu()
-
+                    yield img
 
             else: # don't patchify
                 img=img.to(device)
@@ -2103,7 +2104,7 @@ class GaussianDiffusion(Module):
                         #img=img-zeta*gradient/(difference**2).mean().detach()
                         img=img+zeta*gradient#/norm
                         #img=img+SW2_hist_grad(img,resize(gt.to(img.device),scale_factors=1/scale_factor))
-
+                        yield img
     
 
             
@@ -2113,8 +2114,9 @@ class GaussianDiffusion(Module):
             #imgs.append(img.cpu())
 
         ret = img if not return_all_timesteps else torch.stack(imgs, dim = 1)
-
+        
         ret = self.unnormalize(ret)
+        yield ret
         return ret
     
 

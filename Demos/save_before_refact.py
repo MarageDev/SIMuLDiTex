@@ -1,15 +1,3 @@
-"""
-Démos à faire : 
-    - Writing text with two textures as font and background (use gradio https://www.gradio.app/docs/gradio/imageeditor to be able to paint over it instead of typing text)
-    Maybe add possibility to upload a custom b&w image as a mask too (easier for quick demos)
-    - Stylization
-    - Spatial linear interpolation between two textures
-    - Interpolate two images
-    - (Interpolation between textures to make a gif)
-    - (Synthesis with a subset of the multi-resolution pyramid)
-    - Inference
-"""
-
 import sys
 import os
 from pathlib import Path
@@ -22,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import gradio as gr
 import time
 import numpy as np
-from Demos.Utilities.theme import *
+from Demos.utilities.theme import *
 
 # SIMuLDiTex Imports
 from SIMuLDiTex.SIMuLDiTex import Unet, GaussianDiffusion, Trainer
