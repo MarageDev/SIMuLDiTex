@@ -23,25 +23,25 @@ import re
 from Demos.utilities.useful_functions import *
 
 # Global variables
-DOCUMENTATION_PATH = 'Demos/sub_demos/doc/doc_spatial_interpolation.md'
+DOCUMENTATION_PATH = 'Demos/sub_demos/doc/doc_spatial_linear_interpolation.md'
 
-width, height = 2048, 1024
+width, height = 4096, 1024
 scale_factor = 1.
 out_width, out_height = width, height
 
-name1,name2 = 'gold','wall' # 2 textures for background anbd font: 'wall' 'carpet' 'rust' 'crepe' 'ananaskin' 'ananaskin2','gold'
+name1,name2 = 'wall','gold' # 2 textures for background anbd font: 'wall' 'carpet' 'rust' 'crepe' 'ananaskin' 'ananaskin2','gold'
 nc = 16 # 16, 32    for 1M or 4M parameters
-S = 2 # Sampling steps
-r = .8 # renoising time ratio
-patch_size=3000 # Maximum side of patches used if inference triggers memory error, to lower in case this happens.
-octaves = 2
+S = 5 # Sampling steps
+r = .5 # renoising time ratio
+patch_size = 4096
+octaves = 3
 total_time_step_ratio = 1.
 
 is_model_loaded = False
 
 ## Functions
 diffusion:GaussianDiffusion = None
-def load_models_spatial_interp():
+def load_models_spatial_linear_interp():
     global diffusion, is_model_loaded
     is_model_loaded = False
     
@@ -78,36 +78,34 @@ def load_models_spatial_interp():
         'images/data/%s'%name2,
         results_folder=folder)
     trainer2.load(get_latest_model_index(folder))   
+
     diffusion1.model2=model2
-
     diffusion = diffusion1
-
     is_model_loaded = True
-    return gr.update(interactive=True, value = "Force Generate")
+    return gr.update(interactive=True, value = "Generate")
+
+def get_texture_from_names():
+    f1 = 'images/data/%s/%s.jpg'%(name1,name1)
+    f2= 'images/data/%s/%s.jpg'%(name2,name2)
+    return f1, f2
 is_running:bool = False
-def run_spatial_interp():   
+
+def run_lin_interp():   
     torch.cuda.empty_cache()
-    """
-    tex1 : background texture
-    tex2 : the masking texture
-    """
+
     global is_running
     is_running = True
-    
-    #omega = load_image_tensor('./Demos/results/test_mask.jpg', device='cuda',scaling_factor=4)
-    omega = load_array_tensor(np.abs(255 - canvas_tex), device='cuda')
-    #save_image(omega[0],'./Demos/results/test_mask.jpg')
-    _, c, h, w = omega.shape
-    size = (out_height, out_width)
 
-    for im in diffusion.spatial_interp(size=size, time_ratio=r, omega=omega, patch_size=patch_size, octaves=octaves,total_time_step_ratio=total_time_step_ratio):
+    size = (out_height, out_width)
+    
+    omega=torch.tensor([0.,1]).unsqueeze(0).unsqueeze(0).unsqueeze(0)
+    
+    for im in diffusion.spatial_interp(size=size, time_ratio=r, omega = omega, octaves=octaves, patch_size=patch_size,total_time_step_ratio=total_time_step_ratio):
         
-        # To go from torch.Tensor to a numpy image
-        img = im[0].permute(1, 2, 0).cpu().numpy()
-        img = (img * 255).clip(0, 255).astype(np.uint8) # Convert range to [0, 255] and uint8 for Gradio
-        
+        img = im[0].permute(1,2,0).cpu()
+        img = (img * 255).clip(0, 255).numpy().astype(np.uint8)
+
         if is_running == False : return img
-        
         
         yield img   
     is_running = False
@@ -169,9 +167,9 @@ def update_total_time_step_ratio(i_t):
     total_time_step_ratio = i_t
 # Interface
 
-load_models_spatial_interp() # pre-load the models to gain in speed during the real-time drawing (otherwise there's a delay of ~5s)
+load_models_spatial_linear_interp() # pre-load the models to gain in speed during the real-time drawing (otherwise there's a delay of ~5s)
 
-def demo_spatial_interpolation():
+def demo_lin_interp():
     with gr.Blocks():
         # Parameter Number
         with gr.Row(equal_height=True,variant="default"):
@@ -182,29 +180,23 @@ def demo_spatial_interpolation():
                 elem_classes="radio_group",
             )
         # Input and output row
-        with gr.Row(equal_height=True,variant="panel", elem_classes="fixed_height_image_row flex_display"):
-            im_layers = gr.LayerOptions(
-                layers=["Mask"],
-                allow_additional_layers=False 
-            )
-            im_brushes = gr.Brush(
-                default_size="auto",
-                colors=["rgb(0, 0, 0)"],
+        with gr.Row(equal_height=True, elem_classes="fixed_height_image_row_550 flex_display min_height"):
+            with gr.Column():
+                im_1 = gr.Image(
+                type="filepath",
+                label="Image 1 ",
+                value = 'images/data/%s/%s.jpg'%(name1,name1),
+                elem_classes="fixed_height_image_150",
+                interactive=False,
+                )
                 
-            )
-            im = gr.ImageEditor(
-                type="numpy",
-                label="Input",
-                sources=(),
-                elem_classes="full_height",
-                elem_id="image_canvas",
-                canvas_size=(width,height),
-                brush=im_brushes
-            )
-            
-            
-            
-            
+                im_2 = gr.Image(
+                type="filepath",
+                label="Image 2 ",
+                value = 'images/data/%s/%s.jpg'%(name2,name2),
+                elem_classes="fixed_height_image_150",
+                interactive=False,
+                )
             im_preview = gr.Image(
                 type="numpy",
                 label="Output",
@@ -215,39 +207,31 @@ def demo_spatial_interpolation():
             )
         with gr.Row(equal_height=True):
             reload_btn = gr.Button(value="Force Stop")
-            btn_generate = gr.Button(value="Force Generate", variant="primary", interactive=True)
+            btn_generate = gr.Button(value="Generate", variant="primary", interactive=True)
             clear_cuda_cache_btn = gr.Button(value="Clear CUDA Cache", variant="stop", interactive=True)
         with gr.Row(equal_height=True):
             in_drop_tex_1 = gr.Dropdown(
                 choices=['wall','carpet','rust','crepe','ananaskin','ananaskin2','gold','blue_up'],
-                label="Texture 1",
-                info="Background texture displayed behind the masking texture (Texture 2)",
+                label="Image 1",
+                info="Image giving the structure (coarse scales).",
                 value=name1,
                 )
             in_drop_tex_2 = gr.Dropdown(
                 choices=['wall','carpet','rust','crepe','ananaskin','ananaskin2','gold','blue_up'],
-                label="Texture 2",
-                info="Texture displayed above the background texture (Texture 1). The mask input will use this texture.",
+                label="Image 2",
+                info="Image giving the texture (fine scales).",
                 value=name2,
                 )
-        # Bind events
-        ## Bind canvas edit
-        update_preview = im.change(
-            fn=stop_running,
-
-        ).then(
-            fn=update_global_canvas_tex,
-            inputs=im,
-        ).then(
-            fn=run_spatial_interp,
+        # Bind events        
+        process_interp = btn_generate.click(
+            fn=run_lin_interp,
             inputs=[],
-            outputs=[im_preview],
-            show_progress=False
+            outputs=[im_preview]
         )
         
         reload_btn.click(
             fn = stop_running,
-            cancels=update_preview
+            cancels= process_interp
         )
         ## Bind texture change
         in_drop_tex_1.change(
@@ -258,9 +242,13 @@ def demo_spatial_interpolation():
             inputs=[in_drop_tex_1],
             outputs=[]
         ).then(
-            fn = load_models_spatial_interp,
+            fn = get_texture_from_names,
+            outputs=[im_1, im_2]
+        ).then(
+            fn = load_models_spatial_linear_interp,
             outputs=btn_generate
         )
+        
         in_drop_tex_2.change(
             fn = lambda : gr.update(interactive=False, value="Loading models"),
             outputs=btn_generate
@@ -269,17 +257,16 @@ def demo_spatial_interpolation():
             inputs=[in_drop_tex_2],
             outputs=[]
         ).then(
-            fn=load_models_spatial_interp,
+            fn = get_texture_from_names,
+            outputs=[im_1, im_2]
+        ).then(
+            fn=load_models_spatial_linear_interp,
             outputs=btn_generate
         )
         
         
 
-        btn_generate.click(
-            fn=run_spatial_interp,
-            inputs=[],
-            outputs=[im_preview]
-        )
+        
         clear_cuda_cache_btn.click(
             fn = clear_cuda_cache
         )
@@ -410,9 +397,10 @@ def demo_spatial_interpolation():
             inputs=[in_radio_nc],
             outputs=[]
         ).then(
-            fn = load_models_spatial_interp,
+            fn = load_models_spatial_linear_interp,
             outputs=btn_generate
         )
+        
         in_total_time_step_ratio.change(
             fn=update_total_time_step_ratio,
             inputs=in_total_time_step_ratio
@@ -422,5 +410,5 @@ def demo_spatial_interpolation():
             gr.Markdown(f.read(),latex_delimiters=[{ "left": "$$", "right": "$$", "display": True },{"left": "$", "right": "$", "display": False},])
 if __name__ == "__main__":
     with gr.Blocks() as demo:
-        demo_spatial_interpolation()
+        demo_lin_interp()
     demo.queue().launch()

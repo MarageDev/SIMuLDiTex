@@ -1,3 +1,4 @@
+# code from Mahé DUVAL
 import gradio as gr
 from gradio.themes.utils import colors
 
@@ -204,6 +205,18 @@ footer {visibility: hidden}
 }
 .fixed_height_image_row{
     height : 350px !important;
+}
+.fixed_height_image_150{
+    height: 150px;
+}
+.fixed_height_230{
+    height:230px;
+}
+.fixed_height_image_row_550{
+    height : 550px !important;
+}
+.min_height{
+    min-height : min-content;
 }
 .output_column {
 height: -webkit-fill-available;

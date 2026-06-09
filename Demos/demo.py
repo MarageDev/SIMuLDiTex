@@ -1,3 +1,4 @@
+# code from Mahé DUVAL
 import sys
 from pathlib import Path
 
@@ -8,7 +9,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import gradio as gr
 from Demos.utilities.theme import *
 from Demos.sub_demos.spatial_interpolation import demo_spatial_interpolation
-from Demos.sub_demos.styilization import demo_stylization
+from Demos.sub_demos.stylization import demo_stylization
+from Demos.sub_demos.interpolate_two_imgs import demo_interp
+from Demos.sub_demos.spatial_linear_interpolation import demo_lin_interp
 
 with gr.Blocks() as demo:
     gr.HTML(HTML_LOGO_HEADER)
@@ -18,6 +21,10 @@ with gr.Blocks() as demo:
             demo_spatial_interpolation()
         with gr.Tab("Stylization", id="b"):
             demo_stylization()
+        with gr.Tab("Interpolate 2 images", id="c"):
+            demo_interp()
+        with gr.Tab("Spatial linear interpolation", id="d"):
+            demo_lin_interp()
     gr.HTML(HTML_FOOTER)
 
 

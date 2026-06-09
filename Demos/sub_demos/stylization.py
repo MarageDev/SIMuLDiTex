@@ -1,3 +1,4 @@
+# code from Mahé DUVAL
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import numpy as np
 from Demos.utilities.useful_functions import *
 
 # Global variables
+DOCUMENTATION_PATH = 'Demos/sub_demos/doc/doc_stylization.md'
 
 width, height = 2048, 1024
 scale_factor = 1.
@@ -31,6 +33,11 @@ res = 1
 zoom_factor = 1.
 
 is_model_loaded = False
+
+maximum_step_number = 1.
+img_steps = []
+
+final_img = None
 
 ## Functions
 diffusion:GaussianDiffusion = None
@@ -60,15 +67,32 @@ def load_models_stylization():
 
     is_model_loaded = True
     
-    return gr.update(interactive=True)
+    return gr.update(interactive=True, value="Generate")
 def stylize(pth):
+    
+    global final_img, img_steps
+    
     gt=trainer.ds.images[0][0].unsqueeze(0)
     input=load_image_tensor(pth)
-    for im in diffusion.stylize(size=(input.shape[-2]*zoom_factor,input.shape[-1]*zoom_factor),input=input,gt=gt,zeta=zeta,output_texture_resolution_ind=res,time_ratio=r):
-        img = im[0].permute(1,2,0).cpu()
+    last_img = None
+    list_of_steps = []
+    final_steps = []
+    
+    for im in diffusion.stylize(size=(input.shape[-2]*zoom_factor,input.shape[-1]*zoom_factor),input=input,gt=gt,zeta=zeta,output_texture_resolution_ind=res,time_ratio=r) :
+        img = im[0][0].permute(1,2,0).cpu()
         img = (img * 255).clip(0, 255).numpy().astype(np.uint8)
+        last_img = img
+        list_of_steps = im[1]
         yield img
-
+    final_img = last_img
+    for step in list_of_steps :
+        
+        img = step[0].permute(1,2,0).cpu()
+        img = (img * 255).clip(0, 255).numpy().astype(np.uint8)
+        final_steps.append(img)
+    img_steps = final_steps
+    global maximum_step_number
+    maximum_step_number=  len(list_of_steps)-1
 ## Globals update
 def update_texture(tex1):
     global name
@@ -116,6 +140,9 @@ def update_zeta(i_z):
     global zeta
     zeta = i_z
 
+def udpate_viewed_step(i_s):
+    return img_steps[i_s], gr.update(maximum = maximum_step_number)
+
 # Interface
 
 load_models_stylization()
@@ -138,13 +165,21 @@ def demo_stylization():
                 label="Input",
                 elem_classes="full_height",
             )
-
-            preview_img = gr.Image(
-                type="numpy",
-                label="Output",
-                elem_classes="output-image-fill",
-                interactive=False,
-            )
+            with gr.Column():
+                preview_img = gr.Image(
+                    type="numpy",
+                    label="Output",
+                    elem_classes="output-image-fill fixed_height_230",
+                    interactive=False,
+                )
+                in_step_slider = gr.Slider(
+                    minimum=0.,
+                    maximum= maximum_step_number,
+                    value = 0.,
+                    step = 1.0,
+                    label="View step N",
+                    interactive = False
+                )
         with gr.Row(equal_height=True):
             with gr.Column(scale=2):
                 in_zoom_factor = gr.Slider(
@@ -160,8 +195,9 @@ def demo_stylization():
                     value=zeta
                 )
                 in_res = gr.Slider(
-                    minimum=0.1,
-                    maximum=2.,
+                    minimum=1.,
+                    maximum=5.,
+                    step=1.,
                     label="Resolution",
                     value=res
                 )
@@ -190,7 +226,7 @@ def demo_stylization():
             inputs= [in_res]
         )
         in_drop_tex.change(
-            fn = lambda : gr.update(interactive=False),
+            fn = lambda : gr.update(interactive=False, value="Loading models"),
             outputs=generate_btn
         ).then(
             fn=update_texture,
@@ -203,14 +239,21 @@ def demo_stylization():
         stylize_process = generate_btn.click(
             fn = lambda : (
                 gr.update(interactive=False,visible=False),
-                gr.update(interactive=True, visible= True)
+                gr.update(interactive=True, visible= True),
+                gr.update(interactive=False, visible= True),
             ),
-            outputs=[generate_btn,cancel_btn_stylize]
+            outputs=[generate_btn,cancel_btn_stylize, in_step_slider]
         ).then(
             fn=stylize,
             inputs=input_img,
             outputs=preview_img,
             show_progress=False,
+        ).success(
+            fn= lambda : gr.update(maximum = maximum_step_number),
+            outputs = in_step_slider
+        ).then(
+            fn= lambda : gr.update(value = maximum_step_number, interactive = True),
+            outputs = in_step_slider
         )
         stylize_process.then(
             fn = lambda : (
@@ -230,7 +273,7 @@ def demo_stylization():
 	    )
         
         in_radio_nc.change(
-            fn = lambda : gr.update(interactive=False),
+            fn = lambda : gr.update(interactive=False, value="Loading models"),
             outputs=generate_btn
         ).then(
             fn=update_parameter_number,
@@ -308,7 +351,17 @@ def demo_stylization():
             inputs=[in_S, in_r, in_patch_size, in_octaves],
             outputs=[]
         )
-
+        
+        in_step_slider.change(
+            fn = udpate_viewed_step,
+            inputs=in_step_slider,
+            outputs=[preview_img,in_step_slider],
+            show_progress=False,
+            show_progress_on = preview_img
+        )
+    with gr.Accordion(label="Documentation", open=True):
+        with open(DOCUMENTATION_PATH,'r') as f : 
+            gr.Markdown(f.read(),latex_delimiters=[{ "left": "$$", "right": "$$", "display": True },{"left": "$", "right": "$", "display": False},])
 if __name__ == "__main__":
     with gr.Blocks() as demo:
         demo_stylization()
