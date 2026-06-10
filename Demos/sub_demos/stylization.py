@@ -177,7 +177,7 @@ def demo_stylization():
                     maximum= maximum_step_number,
                     value = 0.,
                     step = 1.0,
-                    label="View step N",
+                    label="View scale N",
                     interactive = False
                 )
         with gr.Row(equal_height=True):
